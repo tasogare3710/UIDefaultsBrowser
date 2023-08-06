@@ -1,3 +1,5 @@
+import static java.awt.RenderingHints.*;
+
 import javax.imageio.ImageIO;
 import javax.swing.Icon;
 import javax.swing.InputMap;
@@ -6,6 +8,9 @@ import javax.swing.UIDefaults;
 import javax.swing.UIManager;
 import javax.swing.border.Border;
 import javax.swing.Painter;
+import javax.swing.JComponent;
+import java.lang.System.Logger;
+import java.lang.System.Logger.Level;
 import java.lang.reflect.Array;
 import java.awt.AlphaComposite;
 import java.awt.Color;
@@ -14,6 +19,7 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Insets;
+import java.awt.font.TextLayout;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -23,112 +29,66 @@ import java.nio.file.Paths;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.TreeMap;
 import java.util.Objects;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 public class UIDefaultsBrowser {
-    private static final Set<String> NIMBUS_PRIMARY_COLORS = Set.of(
-        "text", "control", "nimbusBase", "nimbusOrange", "nimbusGreen", "nimbusRed", "nimbusInfoBlue",
-        "nimbusAlertYellow", "nimbusFocus", "nimbusSelectedText", "nimbusSelectionBackground",
-        "nimbusDisabledText", "nimbusLightBackground", "info");
-    private static final Set<String> NIMBUS_SECONDARY_COLORS = Set.of(
-        "textForeground", "textBackground", "background", "nimbusBlueGrey", "nimbusBorder",
-        "nimbusSelection", "infoText", "menuText", "menu", "scrollbar", "controlText",
-        "controlHighlight", "controlLHighlight", "controlShadow", "controlDkShadow", "textHighlight",
-        "textHighlightText", "textInactiveText", "desktop", "activeCaption", "inactiveCaption");
-    private static final List<String> NIMBUS_COMPONENTS = List.of(
-        "ArrowButton", "Button", "ToggleButton", "RadioButton", "CheckBox", "ColorChooser", "ComboBox",
-        "\"ComboBox.scrollPane\"", "FileChooser", "InternalFrameTitlePane", "InternalFrame", "DesktopIcon",
-        "DesktopPane", "Label", "List", "MenuBar", "MenuItem", "RadioButtonMenuItem", "CheckBoxMenuItem", "Menu",
-        "PopupMenu", "PopupMenuSeparator", "OptionPane", "Panel", "ProgressBar", "Separator", "ScrollBar",
-        "ScrollPane", "Viewport", "Slider", "Spinner", "SplitPane", "TabbedPane", "Table", "TableHeader",
-        "\"Table.editor\"", "\"Tree.cellEditor\"", "TextField", "FormattedTextField", "PasswordField", "TextArea",
-        "TextPane", "EditorPane", "ToolBar", "ToolBarSeparator", "ToolTip", "Tree", "RootPane");
+    private static final System.Logger LOG = System.getLogger(UIDefaultsBrowser.class.getName());
+
+    private static final int PREVIEW_LARGE_WIDTH = 512;
+    private static final int PREVIEW_LARGE_HEIGHT = PREVIEW_LARGE_WIDTH;
 
     private int IMAGE_COUNT = 0;
 
-    public static final void main(String... args) {
-        SwingUtilities.invokeLater(new UIDefaultsBrowser()::run);
+    private static boolean isPreviewLarge(int width, int height){
+        return width > PREVIEW_LARGE_WIDTH || PREVIEW_LARGE_HEIGHT > 512;
     }
 
-    private void run() {
-        var nimbusLookAndFeelClassName = "";
-        for (var laf : UIManager.getInstalledLookAndFeels()) {
-            if (laf.getName().contains("Nimbus")) {
-                try {
-                    nimbusLookAndFeelClassName = laf.getClassName();
-                    UIManager.setLookAndFeel(nimbusLookAndFeelClassName);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        }
+    public static final void main(String... args) {
+        SwingUtilities.invokeLater(() -> new UIDefaultsBrowser(args));
+    }
 
-        var defaults = UIManager.getLookAndFeelDefaults();
-        var componentDefaults = new HashMap<String, Map<String, Object>>();
-        var others = new HashMap<String, Object>();
-        for (var key : defaults.keySet().parallelStream().map(Object::toString).toList()) {
-            boolean matchesComponent = false;
-            componentloop: for (var componentName : NIMBUS_COMPONENTS) {
-                if (key.startsWith(componentName + ".") ||
-                    key.startsWith(componentName + ":") ||
-                    key.startsWith(componentName + "["))
-                {
-                    var keys = componentDefaults.get(componentName);
-                    if (keys == null) {
-                        keys = new HashMap<String, Object>();
-                        componentDefaults.put(componentName, keys);
-                    }
-                    keys.put(key, defaults.get(key));
-                    matchesComponent = true;
-                    break componentloop;
-                }
-            }
-            if (!matchesComponent) { others.put(key, defaults.get(key)); }
-        }
-        // split out primary, secondary colors
-        var primaryColors = new HashMap<String, Object>();
-        var secondaryColors = new HashMap<String, Object>();
-        for (var entry : others.entrySet()) {
-            if (NIMBUS_PRIMARY_COLORS.contains(entry.getKey())) {
-                primaryColors.put(entry.getKey(), (Color) entry.getValue());
-            }
-            if (NIMBUS_SECONDARY_COLORS.contains(entry.getKey())) {
-                secondaryColors.put(entry.getKey(), (Color) entry.getValue());
+    public UIDefaultsBrowser(String... args){
+        var selectedLookAndFeel = Objects.requireNonNull(UIManager.getLookAndFeel(), "disallow null-laf");
+        var selectedLookAndFeelClassName = selectedLookAndFeel.getClass().getName();
+        for (var laf : UIManager.getInstalledLookAndFeels()) {
+            var className=laf.getClassName();
+            if(className.equals(selectedLookAndFeelClassName)){
+                System.out.println(className + " [SELECTED]");
+            } else {
+                System.out.println(className);
             }
         }
-        for (var key : NIMBUS_PRIMARY_COLORS) {
-            others.remove(NIMBUS_PRIMARY_COLORS);
-        }
-        for (var key : NIMBUS_SECONDARY_COLORS) {
-            others.remove(key);
+        var lookAndFeelDefaults = UIManager.getLookAndFeelDefaults();
+        var componentDefaults = new TreeMap<String, Object>(String::compareTo);
+        for (var entry : lookAndFeelDefaults.entrySet()) {
+            componentDefaults.put(entry.getKey().toString(), entry.getValue());
         }
         // split out UIs
-        var uiClasses = new HashMap<String, Object>();
-        for (var entry : others.entrySet()) {
-            if (entry.getKey().endsWith("UI")) {
-                uiClasses.put(entry.getKey(), entry.getValue());
+        var uiClasses = new TreeMap<String, Object>(String::compareTo);
+        for (var entry : componentDefaults.entrySet()) {
+            var key=entry.getKey();
+            if (key.endsWith("UI")) {
+                uiClasses.put(key, entry.getValue());
             }
         }
         for (var key : uiClasses.keySet()) {
-            others.remove(key);
+            componentDefaults.remove(key);
         }
+
         // write html file
-        var base = Paths.get("output");
+        var base = Paths.get(selectedLookAndFeelClassName);
         try {
             Files.createDirectories(base);
         } catch (IOException e) {
             e.printStackTrace();
         }
 
-        var htmlFile = base.resolve("nimbus.html");
+        var htmlFile = base.resolve("UIDefaults.html");
         System.out.println("Outputing to " + htmlFile.toAbsolutePath());
         var stringWriter = new StringWriter(200);
         try (var html = new PrintWriter(stringWriter)) {
@@ -136,37 +96,35 @@ public class UIDefaultsBrowser {
             <!DOCTYPE html>
             <html lang="en-US">
             <head>
+            <style>
+            .generic_to_string {
+                word-break: break-word;
+            }
+            </style>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width">
-            <title>UIDefaults browser</title>
+            <title>UIDefaults browser - browsing UIDefaults of %1$s</title>
             <link href="style.css" rel="stylesheet" type="text/css"/>
             </head>
             <body>
             <hgroup id="title">
             <h1>UIDefaults browser</h1>
-            <p>browsing UIDefaults.</p>
+            <p>browsing UIDefaults of <code>%1$s</code>.</p>
             </hgroup>
-            """);
+            """.formatted(selectedLookAndFeelClassName));
 
-            var titlePrimaryColors = "Primary Colors";
-            var titleSecondaryColors = "Secondary Colors";
-            var titleComponents="Components";
-            var titleOthers = "Others";
-            var titleUIClasses = "UI Classes";
             html.println("""
             <header>
             <figure>
-            <figcaption>%s</figcaption>
-            """.formatted(nimbusLookAndFeelClassName));
+            <figcaption>Table of contents</figcaption>
+            """);
 
+            var titleComponents="Components";
+            var titleUIClasses = "UI Classes";
             printTableOfContent(
-                titlePrimaryColors,
-                titleSecondaryColors,
                 titleComponents,
-                titleOthers,
                 titleUIClasses,
-                html,
-                componentDefaults
+                html
             );
 
             html.println("""
@@ -175,22 +133,14 @@ public class UIDefaultsBrowser {
             <main>
             """);
 
-            printTable(titlePrimaryColors, base, html, primaryColors);
-            printTable(titleSecondaryColors, base, html, secondaryColors);
-
-            html.println("""
-            <header id="%s">%s</header>
-            """.formatted(titleComponents, titleComponents));
-            for (var entry : componentDefaults.entrySet()) {
-                var titleKey = titleComponents + " - " + entry.getKey();
-                printTable(titleKey, base, html, entry.getValue());
-            }
-
-            printTable(titleOthers, base, html, others);
-            printTable(titleUIClasses , base, html, uiClasses);
+            printTable(titleComponents, componentDefaults, html, base, lookAndFeelDefaults);
+            printTable(titleUIClasses, uiClasses, html, base, lookAndFeelDefaults);
 
             html.println("""
             </main>
+            <footer id="footer">
+            <p>If the value is <mark>UIDefaults.ActiveValue</mark> or <mark>UIDefaults.LazyValue</mark>, they are marked.</p>
+            </footer>
             </body>
             </html>
             """);
@@ -202,45 +152,40 @@ public class UIDefaultsBrowser {
     }
 
     private void printTableOfContent(
-        String titlePrimaryColors,
-        String titleSecondaryColors,
         String titleComponents,
-        String titleOthers,
         String titleUIClasses,
-        PrintWriter html,
-        HashMap<String, Map<String, Object>> componentDefaults
+        PrintWriter html
     ) throws Exception {
         html.println("<ul>");
-        html.println("<li><a href=\"#" + titlePrimaryColors + "\">" + titlePrimaryColors + "</a>");
-        html.println("<li><a href=\"#" + titleSecondaryColors + "\">" + titleSecondaryColors + "</a>");
-        html.println("<li><a href=\"#" + titleComponents + "\">" + titleComponents + "</a>");
-        html.println("<ul>");
-        for (var entry : componentDefaults.entrySet()) {
-            var titleKey = titleComponents + " - " + entry.getKey();
-            html.println("<li><a href=\"#" + titleKey + "\">" + titleKey + "</a></li>");
-        }
-        html.println("</ul>");
-        html.println("</li>");
-        html.println("<li><a href=\"#" + titleOthers + "\">" + titleOthers + "</a>");
+        html.println("<li><a href=\"#" + titleComponents + "\">" + titleComponents + "</a></li>");
         html.println("<li><a href=\"#" + titleUIClasses + "\">" + titleUIClasses + "</a>");
+        html.println("<li><a href=\"#footer\">Note</a>");
         html.println("</ul>");
     }
 
-    private void printTable(String caption, Path base, PrintWriter html, Map<String, Object> map) throws Exception {
+    private void printTable(String caption, Map<String, Object> map, PrintWriter html, Path base, UIDefaults table) throws Exception {
         html.println("""
         <table><caption id="%s">%s</caption>
         <thead><tr><th>Key</th><th>Value</th><th>Preview</th></tr></thead>
         <tbody>
         """.formatted(caption, caption));
-        for (var key : map.keySet().stream().sorted().toList()) {
-            printRow(base, html, key, map.get(key));
+        for (var key : map.keySet()) {
+            printRow(base, html, key, map.get(key), table);
         }
         html.println("</tbody></table>");
     }
 
-    private void printRow(Path base, PrintWriter html, String key, Object value) throws Exception {
+    private void printRow(Path base, PrintWriter html, Object key, Object value, UIDefaults table) throws Exception {
         html.println("<tr><td><code>%s</code></td>".formatted(key));
-        if (value instanceof Color color) {
+        if(value instanceof UIDefaults.ActiveValue activeValue) {
+            var live = activeValue.createValue(table);
+            html.println("<td><mark>%s</mark></td><td>&nbsp;</td>".formatted(activeValue));
+            printRow(base, html, activeValue.toString(), live, table);
+        } else if (value instanceof UIDefaults.LazyValue lazyValue) {
+            var live = lazyValue.createValue(table);
+            html.println("<td><mark>%s</mark></td><td>&nbsp;</td>".formatted(lazyValue));
+            printRow(base, html, lazyValue.toString(), live, table);
+        } else if (value instanceof Color color) {
             printColor(html, color);
         } else if (value instanceof Font font) {
             printFont(base, html, font);
@@ -256,57 +201,80 @@ public class UIDefaultsBrowser {
             printInputMap(html, inputMap);
         } else if (value instanceof Icon icon) {
             printIcon(base, html, icon);
+        } else if(value instanceof Number number) {
+            var s=Objects.toString(number);
+            html.println("<td>%s</td><td>&nbsp;</td>".formatted(s));
+        } else if(value instanceof Boolean b) {
+            var s=Objects.toString(b);
+            html.println("<td>%s</td><td>&nbsp;</td>".formatted(s));
         } else if (value != null && value.getClass().isArray()) {
             printArray(html, value);
         } else {
             var s=Objects.toString(value);
-            html.println("<td>%s</td><td>&nbsp;</td>".formatted(s));
+            html.println("""
+            <td class="generic_to_string">%s</td><td>&nbsp;</td>
+            """.formatted(s));
         }
         html.println("</tr>");
     }
 
     private void printColor(PrintWriter html, Color color) {
         var webColor = getWebColor(color);
+        var negativeColor = getNegativeWebColor(color);
         var colorTuple = getColorTuple(color);
         html.println("""
-        <td><code title="%s">#%s</code></td>
-        <td style="background-color: #%s;"></td>
-        """.formatted(colorTuple, webColor, webColor));
+        <td><code>%1$s</code></td>
+        <td title="#%3$s" style="background-color: #%3$s;color: #%4$s;">#%3$s</td>
+        """.formatted(color, colorTuple, webColor, negativeColor));
     }
 
     private void printPainter(Path base, PrintWriter html, Painter painter) throws Exception {
         html.println("<td>%s</td>".formatted(painter.getClass().getTypeName()));
         int w=25,h=25;
-        try {
-            var img = new BufferedImage(w,h, BufferedImage.TYPE_INT_ARGB);
-            var g2 = img.createGraphics();
-            var old = g2.getComposite();
-            g2.setComposite(AlphaComposite.Clear);
-            g2.fillRect(0,0,w,h);
-            g2.setComposite(old);
-            painter.paint(g2, new javax.swing.JComponent(){},w,h);
-            g2.dispose();
-            html.println("<td>%s</td>".formatted(saveImage(base, img)));
-        } catch (Exception e) {
-            e.printStackTrace();
-            html.println("<td>&nbsp;</td>");
-        }
-    }
-
-    private void printFont(Path base, PrintWriter html, Font font) throws Exception {
-        int w=300,h=30;
         var img = new BufferedImage(w,h, BufferedImage.TYPE_INT_ARGB);
         var g2 = img.createGraphics();
         var old = g2.getComposite();
         g2.setComposite(AlphaComposite.Clear);
         g2.fillRect(0,0,w,h);
         g2.setComposite(old);
+        boolean skipPaint=false;
+        try {
+            painter.paint(g2, makeJComponent(w,h),w,h);
+        } catch (Exception e) {
+            LOG.log(Level.ERROR, "skip paint painter");
+            g2.drawString("skip paint", 0, 0);
+            html.println("<td>&nbsp;</td>");
+        }
+        g2.dispose();
+        html.println("<td>%s</td>".formatted(saveImage(base, img, skipPaint)));
+    }
+
+    private void printFont(Path base, PrintWriter html, Font font) throws Exception {
+        int w = 320;
+        int h = font.getSize() * 2;
+        var img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        var g2 = img.createGraphics();
+        g2.addRenderingHints(Map.of(
+            KEY_TEXT_ANTIALIASING, VALUE_TEXT_ANTIALIAS_ON
+        ));
+        var old = g2.getComposite();
+        g2.setComposite(AlphaComposite.Clear);
+        var frc = g2.getFontRenderContext();
+        var layout = new TextLayout("the quick brown fox jumps over the crazy dog", font, frc);
+        float x = ((float)w) / 2.0f - layout.getAdvance() / 2.0f;
+        float y = layout.getAscent() + layout.getDescent() + layout.getLeading();
+        var bounds=layout.getBounds();
+        bounds.setRect(bounds.getX() + (double)x,
+                       bounds.getY() + (double)y,
+                       bounds.getWidth(),
+                       bounds.getHeight());
+        g2.draw(bounds);
+        g2.setComposite(old);
         g2.setColor(Color.BLACK);
-        g2.setFont(font);
-        g2.drawString("the quick brown fox jumps over the crazy dog",5,20);
+        layout.draw(g2, x, y);
         g2.dispose();
 
-        html.println("<td>%s</td><td>%s</td>".formatted(font, saveImage(base, img)));
+        html.println("<td>%s</td><td>%s</td>".formatted(font, saveImage(base, img, false)));
     }
 
     private void printInsets(Path base, PrintWriter html, Insets insets) throws Exception {
@@ -324,7 +292,7 @@ public class UIDefaultsBrowser {
         g2.drawRect(0,0,w-1,h-1);
         g2.dispose();
 
-        html.println("<td>%s</td><td>%s</td>".formatted(insets, saveImage(base, img)));
+        html.println("<td>%s</td><td>%s</td>".formatted(insets, saveImage(base, img, false)));
     }
 
     private void printBorder(Path base, PrintWriter html, Border border) throws Exception {
@@ -341,9 +309,17 @@ public class UIDefaultsBrowser {
             g2.setComposite(old);
             g2.setColor(Color.RED);
             g2.fillRect(insets.left, insets.top, 49,19);
-            border.paintBorder(null,g2, 0,0,w,h);
+            boolean skipPaint=false;
+            try {
+                // FIXME: borderの種類ごとにcomponentを渡す必要がある
+                border.paintBorder(makeJComponent(w,h),g2, 0,0,w,h);
+            }catch(Exception e){
+                LOG.log(Level.ERROR, "skip paint border");
+                g2.drawString("skip paint", 0, 0);
+                skipPaint=true;
+            }
             g2.dispose();
-            html.println("<td>%s</td>".formatted(saveImage(base, img)));
+            html.println("<td>%s</td>".formatted(saveImage(base, img, skipPaint)));
         } catch (Exception e) {
             e.printStackTrace();
             html.println("<td>&nbsp;</td>");
@@ -366,23 +342,41 @@ public class UIDefaultsBrowser {
             g2.setColor(Color.RED);
             g2.drawRect(0,0,w-1,h-1);
             g2.dispose();
-            html.println("<td>%s</td>".formatted(saveImage(base, img)));
+            html.println("<td>%s</td>".formatted(saveImage(base, img, false)));
         }
     }
 
     private void printIcon(Path base, PrintWriter html, Icon icon) throws Exception {
-        var img = new BufferedImage(icon.getIconWidth(), icon.getIconHeight(), BufferedImage.TYPE_INT_ARGB);
+        var w=icon.getIconWidth();
+        var h=icon.getIconHeight();
+        BufferedImage img=null;
+        try {
+            img = new BufferedImage(w,h, BufferedImage.TYPE_INT_ARGB);
+        } catch(IllegalArgumentException iae){
+            LOG.log(Level.ERROR, iae);
+            w=16;
+            h=16;
+            img = new BufferedImage(w,h, BufferedImage.TYPE_INT_ARGB);
+        }
         var g2 = img.createGraphics();
         var old = g2.getComposite();
         g2.setComposite(AlphaComposite.Clear);
-        g2.fillRect(0,0,icon.getIconWidth(), icon.getIconHeight());
+        g2.fillRect(0,0,w, h);
         g2.setComposite(old);
-        icon.paintIcon(null,g2, 0, 0);
+        boolean skipPaint=false;
+        try {
+            // FIXME: iconの種類ごとにcomponentを渡す必要がある
+            icon.paintIcon(makeJComponent(w, h),g2, 0, 0);
+        }catch(Exception e){
+            LOG.log(Level.ERROR, "skip paint icon");
+            g2.drawString("skip paint", 0, 0);
+            skipPaint=true;
+        }
         g2.dispose();
 
         html.println("""
         <td>Icon %s * %s</td><td>%s</td>
-        """.formatted(icon.getIconWidth(), icon.getIconHeight(), saveImage(base, img)));
+        """.formatted(icon.getIconWidth(), icon.getIconHeight(), saveImage(base, img, skipPaint)));
     }
 
     private void printInputMap(PrintWriter html, InputMap inputMap) {
@@ -425,7 +419,7 @@ public class UIDefaultsBrowser {
         """);
     }
 
-    private String saveImage(Path base, BufferedImage img) throws Exception {
+    private String saveImage(Path base, BufferedImage img, boolean skipPaint) throws Exception {
         var path = base.resolve("images");
         Files.createDirectories(path);
         var name = "img_" + (IMAGE_COUNT++) + ".png";
@@ -435,9 +429,24 @@ public class UIDefaultsBrowser {
         }
         var imgFile = path.toFile();
         ImageIO.write(img,"png",imgFile);
-        return """
-        <img src="%s" alt="%s">
-        """.formatted(base.relativize(path), name);
+
+        int width=img.getWidth();
+        int height=img.getHeight();
+        if(skipPaint){
+            return """
+            <img src="%s" alt="%s"><strong>skip paint</strong>
+            """.formatted(base.relativize(path), name);
+        } else if(isPreviewLarge(width, height)) {
+            LOG.log(Level.INFO, """
+            large preview converted to link: %s * %s""".formatted(width, height));
+            return """
+            <a href="%s" title="%s">show large preview</a>
+            """.formatted(base.relativize(path), name);
+        } else {
+            return """
+            <img src="%s" alt="%s">
+            """.formatted(base.relativize(path), name);
+        }
     }
 
     private String getColorTuple(Color color) {
@@ -445,25 +454,49 @@ public class UIDefaultsBrowser {
     }
 
     private String getWebColor(Color color) {
-        String result = "";
-
-        String num = Integer.toHexString(color.getRed());
-        if (num.length() == 1) { num = "0" + num; }
-        result += num;
-
-        num = Integer.toHexString(color.getGreen());
-        if (num.length() == 1) { num = "0" + num; }
-        result += num;
-
-        num = Integer.toHexString(color.getBlue());
-        if (num.length() == 1) { num = "0" + num; }
-        result += num;
-
-        num = Integer.toHexString(color.getAlpha());
-        if (num.length() == 1) { num = "0" + num; }
-        result += num;
-
-        return result;
+        return getWebColor(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha());
     }
 
+    private String getWebColor(int red, int green, int blue, int alpha) {
+        var result = new StringBuilder();
+
+        var num = Integer.toHexString(red);
+        if (num.length() == 1) { num = "0" + num; }
+        result.append(num);
+
+        num = Integer.toHexString(green);
+        if (num.length() == 1) { num = "0" + num; }
+        result.append(num);
+
+        num = Integer.toHexString(blue);
+        if (num.length() == 1) { num = "0" + num; }
+        result.append(num);
+
+        num = Integer.toHexString(alpha);
+        if (num.length() == 1) { num = "0" + num; }
+        result.append(num);
+
+        return result.toString();
+    }
+
+    private String getNegativeWebColor(Color color) {
+        return getWebColor(0xff - color.getRed(), 0xff - color.getGreen(), 0xff - color.getBlue(), color.getAlpha());
+    }
+
+    private JComponent makeJComponent(int w, int h){
+        return new JComponent(){
+            @Override
+            public int getWidth(){
+                return w;
+            }
+            @Override
+            public int getHeight(){
+                return h;
+            }
+            @Override
+            public Dimension getSize(Dimension rv){
+                return new Dimension(getWidth(), getHeight());
+            }
+        };
+    }
 }
