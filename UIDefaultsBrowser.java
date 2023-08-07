@@ -49,10 +49,15 @@ public class UIDefaultsBrowser {
     }
 
     public static final void main(String... args) {
-        SwingUtilities.invokeLater(() -> new UIDefaultsBrowser(args));
+        if(args.length != 1){
+            System.out.println("Usage");
+            System.out.println("java UIDefaultsBrowser.java [output]");
+        } else {
+            SwingUtilities.invokeLater(() -> new UIDefaultsBrowser(args[0]));
+        }
     }
 
-    public UIDefaultsBrowser(String... args){
+    public UIDefaultsBrowser(String output){
         var selectedLookAndFeel = Objects.requireNonNull(UIManager.getLookAndFeel(), "disallow null-laf");
         var selectedLookAndFeelClassName = selectedLookAndFeel.getClass().getName();
         for (var laf : UIManager.getInstalledLookAndFeels()) {
@@ -81,7 +86,7 @@ public class UIDefaultsBrowser {
         }
 
         // write html file
-        var base = Paths.get(selectedLookAndFeelClassName);
+        var base = Paths.get(output, selectedLookAndFeelClassName);
         try {
             Files.createDirectories(base);
         } catch (IOException e) {
