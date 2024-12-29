@@ -52,8 +52,11 @@ public class UIDefaultsBrowser {
 
     public static final void main(String... args) {
         if (args.length != 1) {
-            System.out.println("Usage");
-            System.out.println("java UIDefaultsBrowser.java [output]");
+            System.out.println(
+                    """
+                    Usage:
+                        java UIDefaultsBrowser.java [output_dir]
+                    """);
         } else {
             SwingUtilities.invokeLater(() -> new UIDefaultsBrowser(args[0]));
         }
@@ -102,64 +105,71 @@ public class UIDefaultsBrowser {
 
         var htmlFile = base.resolve("UIDefaults.html");
         System.out.println("Outputing to " + htmlFile.toAbsolutePath() + "\n");
+
+        var titleComponents = "Components";
+        var titleUIClasses = "UI Classes";
         var stringWriter = new StringWriter(200);
-        try (var html = new PrintWriter(stringWriter)) {
+        try (PrintWriter html = new PrintWriter(stringWriter)) {
             html.println(
                     """
-                    <!DOCTYPE html>
-                    <html lang="en-US">
-                    <head>
-                    <style>
-                    .generic_to_string {
-                        word-break: break-word;
-                    }
-                    .no-break-space {
-                        white-space: pre;
-                    }
-                    </style>
-                    <meta charset="utf-8">
-                    <meta name="viewport" content="width=device-width">
-                    <title>UIDefaults browser - browsing UIDefaults of %1$s</title>
-                    <link href="style.css" rel="stylesheet" type="text/css"/>
-                    </head>
-                    <body>
-                    <hgroup id="title">
-                    <h1>UIDefaults browser</h1>
-                    <p>browsing UIDefaults of <code>%1$s</code>.</p>
-                    </hgroup>
-                    """
-                            .formatted(selectedLookAndFeelClassName));
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+<style>
+.generic_to_string {
+    word-break: break-word;
+}
+.no-break-space {
+    white-space: pre;
+}
+</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>UIDefaults browser - browsing UIDefaults of %1$s</title>
+</head>
+<body>
+<hgroup id="title">
+<h1>UIDefaults browser</h1>
+<p>browsing UIDefaults of <code>%1$s</code>.</p>
+</hgroup>
 
-            html.println(
-                    """
-                    <header>
-                    <figure>
-                    <figcaption>Table of contents</figcaption>
-                    """);
+<header>
+<figure>
+<figcaption>Table of contents</figcaption>
 
-            var titleComponents = "Components";
-            var titleUIClasses = "UI Classes";
-            printTableOfContent(titleComponents, titleUIClasses, html);
+%2$s
 
-            html.println(
-                    """
-                    </figure>
-                    </header>
-                    <main>
-                    """);
+</figure>
+</header>
+<main>
 
-            printTable(titleComponents, componentDefaults, html, base, lookAndFeelDefaults);
-            printTable(titleUIClasses, uiClasses, html, base, lookAndFeelDefaults);
+%3$s
 
-            html.println(
-                    """
+%4$s
+
 </main>
 <footer id="footer">
 <p>If the value is <mark>UIDefaults.ActiveValue</mark> or <mark>UIDefaults.LazyValue</mark>, they are marked.</p>
 </footer>
 </body>
 </html>
-""");
+"""
+                            .formatted(
+                                    selectedLookAndFeelClassName,
+                                    tableOfContent(
+                                            titleComponents, titleUIClasses, new StringBuilder()),
+                                    table(
+                                            titleComponents,
+                                            componentDefaults,
+                                            new StringBuilder(),
+                                            base,
+                                            lookAndFeelDefaults),
+                                    table(
+                                            titleUIClasses,
+                                            uiClasses,
+                                            new StringBuilder(),
+                                            base,
+                                            lookAndFeelDefaults)));
 
             Files.write(
                     htmlFile,
@@ -170,19 +180,23 @@ public class UIDefaultsBrowser {
         }
     }
 
-    private void printTableOfContent(
-            String titleComponents, String titleUIClasses, PrintWriter html) throws Exception {
-        html.println("<ul>");
-        html.println("<li><a href=\"#" + titleComponents + "\">" + titleComponents + "</a></li>");
-        html.println("<li><a href=\"#" + titleUIClasses + "\">" + titleUIClasses + "</a>");
-        html.println("<li><a href=\"#footer\">Note</a>");
-        html.println("</ul>");
+    private StringBuilder tableOfContent(
+            String titleComponents, String titleUIClasses, StringBuilder html) throws Exception {
+        return html.append("<ul>")
+                .append("<li><a href=\"#" + titleComponents + "\">" + titleComponents + "</a></li>")
+                .append("<li><a href=\"#" + titleUIClasses + "\">" + titleUIClasses + "</a>")
+                .append("<li><a href=\"#footer\">Note</a>")
+                .append("</ul>");
     }
 
-    private void printTable(
-            String caption, Map<String, Object> map, PrintWriter html, Path base, UIDefaults table)
+    private StringBuilder table(
+            String caption,
+            Map<String, Object> map,
+            StringBuilder html,
+            Path base,
+            UIDefaults table)
             throws Exception {
-        html.println(
+        html.append(
                 """
                 <table><caption id="%s">%s</caption>
                 <thead><tr><th>Key</th><th>Value</th><th>Preview</th></tr></thead>
@@ -190,66 +204,66 @@ public class UIDefaultsBrowser {
                 """
                         .formatted(caption, caption));
         for (var key : map.keySet()) {
-            printRow(base, html, key, map.get(key), table);
+            row(base, html, key, map.get(key), table);
         }
-        html.println("</tbody></table>");
+        return html.append("</tbody></table>");
     }
 
-    private void printRow(Path base, PrintWriter html, String key, Object value, UIDefaults table)
+    private void row(Path base, StringBuilder html, String key, Object value, UIDefaults table)
             throws Exception {
-        html.println("<tr><td><code>%s</code></td>".formatted(key));
+        html.append("<tr><td><code>%s</code></td>".formatted(key));
         if (value instanceof UIDefaults.ActiveValue activeValue) {
             var live = activeValue.createValue(table);
-            html.println(
+            html.append(
                     "<td><mark>%s</mark></td><td class=\"no-break-space\">&#x20;</td>"
                             .formatted(activeValue));
-            printRow(base, html, activeValue.toString(), live, table);
+            row(base, html, activeValue.toString(), live, table);
         } else if (value instanceof UIDefaults.LazyValue lazyValue) {
             var live = lazyValue.createValue(table);
-            html.println(
+            html.append(
                     "<td><mark>%s</mark></td><td class=\"no-break-space\">&#x20;</td>"
                             .formatted(lazyValue));
-            printRow(base, html, lazyValue.toString(), live, table);
+            row(base, html, lazyValue.toString(), live, table);
         } else if (value instanceof Color color) {
-            printColor(html, color);
+            this.color(html, color);
         } else if (value instanceof Font font) {
-            printFont(base, html, font);
+            this.font(base, html, font);
         } else if (value instanceof Dimension dim) {
-            printDimension(base, html, dim);
+            this.dimension(base, html, dim);
         } else if (value instanceof Insets insets) {
-            printInsets(base, html, insets);
+            this.insets(base, html, insets);
         } else if (value instanceof Border border) {
-            printBorder(base, html, border);
+            this.border(base, html, border);
         } else if (value instanceof Painter painter) {
-            printPainter(base, html, painter);
+            this.painter(base, html, painter);
         } else if (value instanceof InputMap inputMap) {
-            printInputMap(html, inputMap);
+            this.inputMap(html, inputMap);
         } else if (value instanceof Icon icon) {
-            printIcon(base, html, icon);
+            this.icon(base, html, icon);
         } else if (value instanceof Number number) {
             var s = Objects.toString(number);
-            html.println("<td>%s</td><td class=\"no-break-space\">&#x20;</td>".formatted(s));
+            html.append("<td>%s</td><td class=\"no-break-space\">&#x20;</td>".formatted(s));
         } else if (value instanceof Boolean b) {
             var s = Objects.toString(b);
-            html.println("<td>%s</td><td class=\"no-break-space\">&#x20;</td>".formatted(s));
+            html.append("<td>%s</td><td class=\"no-break-space\">&#x20;</td>".formatted(s));
         } else if (value != null && value.getClass().isArray()) {
-            printArray(html, value);
+            this.array(html, value);
         } else {
             var s = Objects.toString(value);
-            html.println(
+            html.append(
                     """
                     <td class="generic_to_string">%s</td><td class=\"no-break-space\">&#x20;</td>
                     """
                             .formatted(s));
         }
-        html.println("</tr>");
+        html.append("</tr>");
     }
 
-    private void printColor(PrintWriter html, Color color) {
+    private void color(StringBuilder html, Color color) {
         var webColor = getWebColor(color);
         var negativeColor = getNegativeWebColor(color);
         var colorTuple = getColorTuple(color);
-        html.println(
+        html.append(
                 """
                 <td><code>%1$s</code></td>
                 <td title="#%3$s" style="background-color: #%3$s;color: #%4$s;">#%3$s</td>
@@ -258,8 +272,8 @@ public class UIDefaultsBrowser {
     }
 
     @SuppressWarnings("unchecked")
-    private void printPainter(Path base, PrintWriter html, Painter painter) throws Exception {
-        html.println("<td>%s</td>".formatted(painter.getClass().getTypeName()));
+    private void painter(Path base, StringBuilder html, Painter painter) throws Exception {
+        html.append("<td>%s</td>".formatted(painter.getClass().getTypeName()));
         int w = 25;
         int h = 25;
         var img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -274,13 +288,13 @@ public class UIDefaultsBrowser {
         } catch (Exception e) {
             LOG.log(Level.ERROR, "skip paint painter");
             g2.drawString("skip paint", 0, 0);
-            html.println("<td class=\"no-break-space\">&#x20;</td>");
+            html.append("<td class=\"no-break-space\">&#x20;</td>");
         }
         g2.dispose();
-        html.println("<td>%s</td>".formatted(saveImage(base, img, skipPaint)));
+        html.append("<td>%s</td>".formatted(saveImage(base, img, skipPaint)));
     }
 
-    private void printFont(Path base, PrintWriter html, Font font) throws Exception {
+    private void font(Path base, StringBuilder html, Font font) throws Exception {
         int w = 320;
         int h = font.getSize() * 2;
         var img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -304,10 +318,10 @@ public class UIDefaultsBrowser {
         layout.draw(g2, x, y);
         g2.dispose();
 
-        html.println("<td>%s</td><td>%s</td>".formatted(font, saveImage(base, img, false)));
+        html.append("<td>%s</td><td>%s</td>".formatted(font, saveImage(base, img, false)));
     }
 
-    private void printInsets(Path base, PrintWriter html, Insets insets) throws Exception {
+    private void insets(Path base, StringBuilder html, Insets insets) throws Exception {
         int w = 50 + insets.left + insets.right;
         int h = 20 + insets.top + insets.bottom;
         var img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -322,12 +336,12 @@ public class UIDefaultsBrowser {
         g2.drawRect(0, 0, w - 1, h - 1);
         g2.dispose();
 
-        html.println("<td>%s</td><td>%s</td>".formatted(insets, saveImage(base, img, false)));
+        html.append("<td>%s</td><td>%s</td>".formatted(insets, saveImage(base, img, false)));
     }
 
-    private void printBorder(Path base, PrintWriter html, Border border) throws Exception {
+    private void border(Path base, StringBuilder html, Border border) throws Exception {
         var insets = border.getBorderInsets(null);
-        html.println("<td>%s</td>".formatted(insets));
+        html.append("<td>%s</td>".formatted(insets));
         int w = 50 + insets.left + insets.right;
         int h = 20 + insets.top + insets.bottom;
         try {
@@ -356,19 +370,19 @@ public class UIDefaultsBrowser {
                 }
             }
             g2.dispose();
-            html.println("<td>%s</td>".formatted(saveImage(base, img, skipPaint)));
+            html.append("<td>%s</td>".formatted(saveImage(base, img, skipPaint)));
         } catch (Exception e) {
             e.printStackTrace();
-            html.println("<td class=\"no-break-space\">&#x20;</td>");
+            html.append("<td class=\"no-break-space\">&#x20;</td>");
         }
     }
 
-    private void printDimension(Path base, PrintWriter html, Dimension dim) throws Exception {
-        html.println("<td>%s</td>".formatted(dim));
+    private void dimension(Path base, StringBuilder html, Dimension dim) throws Exception {
+        html.append("<td>%s</td>".formatted(dim));
         int w = dim.width;
         int h = dim.height;
         if (w == 0 || h == 0) {
-            html.println("<td class=\"no-break-space\">&#x20;</td>");
+            html.append("<td class=\"no-break-space\">&#x20;</td>");
         } else {
             var img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
             var g2 = img.createGraphics();
@@ -379,7 +393,7 @@ public class UIDefaultsBrowser {
             g2.setColor(Color.RED);
             g2.drawRect(0, 0, w - 1, h - 1);
             g2.dispose();
-            html.println("<td>%s</td>".formatted(saveImage(base, img, false)));
+            html.append("<td>%s</td>".formatted(saveImage(base, img, false)));
         }
     }
 
@@ -423,7 +437,7 @@ public class UIDefaultsBrowser {
         }
     }
 
-    private void printIcon(Path base, PrintWriter html, Icon icon) throws Exception {
+    private void icon(Path base, StringBuilder html, Icon icon) throws Exception {
         int w = icon.getIconWidth();
         if (w <= 0) {
             w = 16;
@@ -445,18 +459,16 @@ public class UIDefaultsBrowser {
         boolean skipPaint = printIconImpl(g2, icon, makeJComponent(w, h), w, h);
         g2.dispose();
 
-        html.println(
-                """
-                <td>Icon %s * %s</td><td>%s</td>
-                """
+        html.append(
+                "<td>Icon %s * %s</td><td>%s</td>"
                         .formatted(
                                 icon.getIconWidth(),
                                 icon.getIconHeight(),
                                 saveImage(base, img, skipPaint)));
     }
 
-    private void printInputMap(PrintWriter html, InputMap inputMap) {
-        html.println(
+    private void inputMap(StringBuilder html, InputMap inputMap) {
+        html.append(
                 """
                 <td>
                 <details>
@@ -466,13 +478,9 @@ public class UIDefaultsBrowser {
                         .formatted(inputMap.getClass().getTypeName()));
         for (var key : inputMap.allKeys()) {
             var binding = inputMap.get(key);
-            html.println(
-                    """
-                    <li><code>%s</code> : %s
-                    """
-                            .formatted(key, binding));
+            html.append("<li><code>%s</code> : %s".formatted(key, binding));
         }
-        html.println(
+        html.append(
                 """
                 </ul>
                 </details>
@@ -481,8 +489,8 @@ public class UIDefaultsBrowser {
                 """);
     }
 
-    private void printArray(PrintWriter html, Object value) {
-        html.println(
+    private void array(StringBuilder html, Object value) {
+        html.append(
                 """
                 <td>
                 <details>
@@ -492,9 +500,9 @@ public class UIDefaultsBrowser {
                         .formatted(value.getClass().getTypeName()));
         for (var i = 0; i < Array.getLength(value); i++) {
             var c = Array.get(value, i);
-            html.println("<li>" + c);
+            html.append("<li>").append(c).append("</li>");
         }
-        html.println(
+        html.append(
                 """
                 </ul>
                 </details>
